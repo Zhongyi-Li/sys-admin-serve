@@ -1,0 +1,14 @@
+services:
+  app:
+    build:
+      context: .
+      target: dev
+    container_name: sys-admin-serve-dev
+    working_dir: /app
+    environment:
+      APP_CONFIG: /app/configs/config.local.yaml
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app
+    command: ["go", "run", "./cmd/server"]

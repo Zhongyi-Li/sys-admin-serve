@@ -1,0 +1,8 @@
+.idea/
+.vscode/
+logs/
+tmp/
+bin/
+*.log
+coverage.out
+docs/swagger/

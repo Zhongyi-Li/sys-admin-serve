@@ -1,0 +1,16 @@
+services:
+  app:
+    build:
+      context: .
+      target: prod
+    container_name: sys-admin-serve-prod
+    restart: always
+    environment:
+      APP_CONFIG: /app/configs/config.prod.yaml
+    ports:
+      - "3000:8080"
+    volumes:
+      - app_logs:/app/logs
+
+volumes:
+  app_logs:
