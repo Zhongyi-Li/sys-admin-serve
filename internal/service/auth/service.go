@@ -20,7 +20,12 @@ var (
 	ErrInvalidCredentials = errors.New("invalid username or password")
 	ErrUserDisabled       = errors.New("user is disabled")
 	ErrUserNotFound       = errors.New("user not found")
+	ErrInvalidRegister    = errors.New("invalid register request")
+	ErrUsernameExists     = errors.New("username already exists")
+	ErrRegisterRoleMiss   = errors.New("register role missing")
 )
+
+const defaultRegisterRoleCode = "normal_user"
 
 type Service struct {
 	repo       *repositoryauth.Repository
@@ -30,6 +35,83 @@ type Service struct {
 
 func NewService(repo *repositoryauth.Repository, jwtManager *jwtutil.Manager, log *zap.Logger) *Service {
 	return &Service{repo: repo, jwtManager: jwtManager, log: log}
+}
+
+func (s *Service) Register(ctx context.Context, req authdto.RegisterRequest) (*authdto.RegisterResponse, error) {
+	username := strings.TrimSpace(req.Username)
+	if username == "" {
+		return nil, ErrInvalidRegister
+	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, fmt.Errorf("hash password: %w", err)
+	}
+
+	nickname := strings.TrimSpace(req.Nickname)
+	if nickname == "" {
+		nickname = username
+	}
+
+	newUser := &model.User{
+		Username: username,
+		Password: string(passwordHash),
+		Nickname: nickname,
+		Email:    strings.TrimSpace(req.Email),
+		Phone:    strings.TrimSpace(req.Phone),
+		Status:   1,
+	}
+
+	if err := s.repo.WithTransaction(ctx, func(txRepo *repositoryauth.Repository) error {
+		user, err := txRepo.GetUserByUsername(ctx, username)
+		if err != nil {
+			return fmt.Errorf("get user by username: %w", err)
+		}
+		if user != nil {
+			return ErrUsernameExists
+		}
+
+		role, err := txRepo.GetRoleByCode(ctx, defaultRegisterRoleCode)
+		if err != nil {
+			return fmt.Errorf("get role by code: %w", err)
+		}
+		if role == nil || role.Status != 1 {
+			return ErrRegisterRoleMiss
+		}
+
+		if err := txRepo.CreateUser(ctx, newUser); err != nil {
+			return err
+		}
+
+		if err := txRepo.CreateUserRole(ctx, newUser.ID, role.ID); err != nil {
+			return fmt.Errorf("bind user role: %w", err)
+		}
+
+		return nil
+	}); err != nil {
+		switch {
+		case errors.Is(err, ErrUsernameExists), errors.Is(err, repositoryauth.ErrDuplicateUsername):
+			s.log.Warn("register failed: username already exists", zap.String("username", username))
+			return nil, ErrUsernameExists
+		case errors.Is(err, ErrRegisterRoleMiss):
+			s.log.Error("register failed: default role missing", zap.String("role_code", defaultRegisterRoleCode))
+			return nil, ErrRegisterRoleMiss
+		default:
+			return nil, fmt.Errorf("register user: %w", err)
+		}
+	}
+
+	s.log.Info("user register succeeded", zap.Uint64("user_id", newUser.ID), zap.String("username", newUser.Username))
+
+	return &authdto.RegisterResponse{
+		ID:       newUser.ID,
+		Username: newUser.Username,
+		Nickname: newUser.Nickname,
+		Email:    newUser.Email,
+		Phone:    newUser.Phone,
+		Avatar:   newUser.Avatar,
+		Status:   newUser.Status,
+	}, nil
 }
 
 func (s *Service) Login(ctx context.Context, req authdto.LoginRequest) (*authdto.LoginResponse, error) {

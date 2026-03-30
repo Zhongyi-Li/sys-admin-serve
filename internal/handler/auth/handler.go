@@ -19,6 +19,29 @@ func NewHandler(authService *serviceauth.Service) *Handler {
 	return &Handler{authService: authService}
 }
 
+func (h *Handler) Register(c *gin.Context) {
+	var req authdto.RegisterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid register request")
+		return
+	}
+
+	result, err := h.authService.Register(c.Request.Context(), req)
+	if err != nil {
+		switch {
+		case errors.Is(err, serviceauth.ErrInvalidRegister):
+			response.BadRequest(c, "invalid register request")
+		case errors.Is(err, serviceauth.ErrUsernameExists):
+			response.BadRequest(c, "username already exists")
+		default:
+			response.InternalError(c)
+		}
+		return
+	}
+
+	response.Success(c, result)
+}
+
 func (h *Handler) Login(c *gin.Context) {
 	var req authdto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -5,6 +5,24 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required,min=6,max=128"`
 }
 
+type RegisterRequest struct {
+	Username string `json:"username" binding:"required,min=3,max=64"`
+	Password string `json:"password" binding:"required,min=6,max=128"`
+	Nickname string `json:"nickname" binding:"omitempty,max=64"`
+	Email    string `json:"email" binding:"omitempty,email,max=128"`
+	Phone    string `json:"phone" binding:"omitempty,max=32"`
+}
+
+type RegisterResponse struct {
+	ID       uint64 `json:"id"`
+	Username string `json:"username"`
+	Nickname string `json:"nickname"`
+	Email    string `json:"email"`
+	Phone    string `json:"phone"`
+	Avatar   string `json:"avatar"`
+	Status   int    `json:"status"`
+}
+
 type UserInfo struct {
 	ID       uint64   `json:"id"`
 	Username string   `json:"username"`

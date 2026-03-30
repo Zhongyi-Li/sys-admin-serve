@@ -7,8 +7,11 @@ import (
 
 	"sys-admin-serve/internal/model"
 
+	mysqlDriver "github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 )
+
+var ErrDuplicateUsername = errors.New("duplicate username")
 
 type Repository struct {
 	db *gorm.DB
@@ -16,6 +19,16 @@ type Repository struct {
 
 func NewRepository(db *gorm.DB) *Repository {
 	return &Repository{db: db}
+}
+
+func (r *Repository) WithTransaction(ctx context.Context, fn func(txRepo *Repository) error) error {
+	if err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return fn(&Repository{db: tx})
+	}); err != nil {
+		return fmt.Errorf("run transaction: %w", err)
+	}
+
+	return nil
 }
 
 func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*model.User, error) {
@@ -28,6 +41,18 @@ func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*m
 	}
 
 	return &user, nil
+}
+
+func (r *Repository) GetRoleByCode(ctx context.Context, code string) (*model.Role, error) {
+	var role model.Role
+	if err := r.db.WithContext(ctx).Where("code = ? AND deleted_at IS NULL", code).First(&role).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("query role by code: %w", err)
+	}
+
+	return &role, nil
 }
 
 func (r *Repository) GetUserByID(ctx context.Context, userID uint64) (*model.User, error) {
@@ -87,4 +112,33 @@ func (r *Repository) ListMenusByUserID(ctx context.Context, userID uint64) ([]mo
 	}
 
 	return menus, nil
+}
+
+func (r *Repository) CreateUser(ctx context.Context, user *model.User) error {
+	if err := r.db.WithContext(ctx).Create(user).Error; err != nil {
+		if isDuplicateEntryError(err) {
+			return ErrDuplicateUsername
+		}
+		return fmt.Errorf("create user: %w", err)
+	}
+
+	return nil
+}
+
+func (r *Repository) CreateUserRole(ctx context.Context, userID, roleID uint64) error {
+	userRole := model.UserRole{
+		UserID: userID,
+		RoleID: roleID,
+	}
+
+	if err := r.db.WithContext(ctx).Create(&userRole).Error; err != nil {
+		return fmt.Errorf("create user role: %w", err)
+	}
+
+	return nil
+}
+
+func isDuplicateEntryError(err error) bool {
+	var mysqlErr *mysqlDriver.MySQLError
+	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1062
 }

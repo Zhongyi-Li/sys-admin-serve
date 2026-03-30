@@ -9,6 +9,7 @@ import (
 	"time"
 
 	authhandler "sys-admin-serve/internal/handler/auth"
+	categoryhandler "sys-admin-serve/internal/handler/category"
 	healthhandler "sys-admin-serve/internal/handler/health"
 	"sys-admin-serve/internal/middleware"
 	"sys-admin-serve/internal/pkg/cache"
@@ -16,8 +17,10 @@ import (
 	"sys-admin-serve/internal/pkg/database"
 	jwtutil "sys-admin-serve/internal/pkg/jwt"
 	repositoryauth "sys-admin-serve/internal/repository/auth"
+	repositorycategory "sys-admin-serve/internal/repository/category"
 	"sys-admin-serve/internal/router"
 	serviceauth "sys-admin-serve/internal/service/auth"
+	servicecategory "sys-admin-serve/internal/service/category"
 	appLogger "sys-admin-serve/logger"
 
 	"github.com/gin-gonic/gin"
@@ -66,15 +69,19 @@ func New(configPath string) (*App, error) {
 
 	healthHandler := healthhandler.NewHandler(cfg)
 	authRepository := repositoryauth.NewRepository(db)
+	categoryRepository := repositorycategory.NewRepository(db)
 	jwtManager := jwtutil.NewManager(cfg.JWT)
 	authService := serviceauth.NewService(authRepository, jwtManager, log)
+	categoryService := servicecategory.NewService(categoryRepository, log)
 	authHandler := authhandler.NewHandler(authService)
+	categoryHandler := categoryhandler.NewHandler(categoryService)
 	authMiddleware := middleware.JWTAuth(jwtManager, log)
 
 	engine := router.New(cfg, log, router.Dependencies{
-		HealthHandler:  healthHandler,
-		AuthHandler:    authHandler,
-		AuthMiddleware: authMiddleware,
+		HealthHandler:   healthHandler,
+		AuthHandler:     authHandler,
+		CategoryHandler: categoryHandler,
+		AuthMiddleware:  authMiddleware,
 	})
 	server := &http.Server{
 		Addr:              cfg.Server.Address(),
